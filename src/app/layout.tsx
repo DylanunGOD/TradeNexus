@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
+import { Encabezado, MarcoEncabezado } from "@/components/Encabezado";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,6 +14,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className="h-full antialiased">
       <body className="flex min-h-full flex-col">
+        <Suspense fallback={<MarcoEncabezado />}>
+          <Encabezado />
+        </Suspense>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8">{children}</main>
         <footer className="border-t border-borde bg-white">
           <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-5 text-xs text-texto-suave sm:flex-row sm:justify-between">
