@@ -7,7 +7,9 @@ import { dinero, fecha, RELEVANCIA_META, TIPOS } from "@/lib/formato";
 import type { ResumenVendedor, Tienda } from "@/lib/tipos";
 import { Avatar, Cargando, Estrellas } from "@/components/ui/basicos";
 import { TarjetaPublicacion, type PublicacionCatalogo } from "@/components/TarjetaPublicacion";
+import { BotonEnviar, FormAccion } from "@/components/ui/FormAccion";
 import { Galeria } from "./Galeria";
+import { contactarVendedor } from "./acciones";
 
 export default function PaginaPublicacion({ params }: PageProps<"/publicaciones/[id]">) {
   return (
@@ -110,6 +112,12 @@ async function Detalle({ params }: { params: PageProps<"/publicaciones/[id]">["p
             <Link href={`/vendedor/publicaciones/${p.id}/editar`} className="btn-secundario w-full">
               Editar publicación
             </Link>
+          ) : usuario?.perfil.rol === "comprador" ? (
+            <FormAccion action={contactarVendedor.bind(null, p.vendedor_id, p.id)}>
+              <BotonEnviar className="btn-primario w-full py-3" textoEnviando="Abriendo chat…">
+                Contactar al vendedor
+              </BotonEnviar>
+            </FormAccion>
           ) : !usuario ? (
             <Link href={`/login?destino=/publicaciones/${p.id}`} className="btn-primario w-full py-3">
               Inicia sesión para contactar al vendedor
