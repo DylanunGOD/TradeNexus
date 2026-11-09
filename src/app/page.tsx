@@ -72,6 +72,9 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/">["searc
     case "precio_desc":
       consulta = consulta.order("precio", { ascending: false });
       break;
+    case "meta":
+      consulta = consulta.order("relevancia_meta", { ascending: false }).order("created_at", { ascending: false });
+      break;
     default:
       consulta = consulta.order("created_at", { ascending: false });
   }
@@ -113,6 +116,7 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/">["searc
           {count ?? 0} {count === 1 ? "publicación" : "publicaciones"}
           {juego && ` de ${juego.nombre}`}
         </p>
+        {sp.orden === "meta" && <p className="hidden sm:block">Ordenado por relevancia en el meta competitivo</p>}
       </div>
 
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">No se pudo cargar el catálogo: {error.message}</p>}

@@ -6,7 +6,7 @@ import type { Juego, Rareza } from "@/lib/tipos";
 
 type Valores = Record<string, string | undefined>;
 
-/** Barra de búsqueda, filtros (juego, rareza, tipo, etiqueta) y orden (RF-02). */
+/** Barra de búsqueda, filtros (juego, rareza, tipo, etiqueta) y orden (RF-02, RF-03). */
 export function FiltrosCatalogo({
   juegos,
   rarezas,
@@ -82,6 +82,7 @@ export function FiltrosCatalogo({
         </Selector>
         <Selector etiqueta="Ordenar por" valor={valores.orden} onChange={(v) => aplicar({ orden: v })}>
           <option value="">Más recientes</option>
+          <option value="meta">Relevancia en el meta</option>
           <option value="precio_asc">Precio: menor a mayor</option>
           <option value="precio_desc">Precio: mayor a menor</option>
         </Selector>
