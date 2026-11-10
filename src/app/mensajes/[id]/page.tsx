@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { exigirUsuario } from "@/lib/auth";
 import { crearClienteServidor } from "@/lib/supabase/server";
-import { dinero } from "@/lib/formato";
-import type { Mensaje } from "@/lib/tipos";
-import { Avatar, Cargando } from "@/components/ui/basicos";
+import { codigoPedido, dinero } from "@/lib/formato";
+import type { EstadoPedido, Mensaje } from "@/lib/tipos";
+import { Avatar, Cargando, EstadoPedidoBadge } from "@/components/ui/basicos";
+import { BotonEnviar, FormAccion } from "@/components/ui/FormAccion";
 import { ListaConversaciones } from "../ListaConversaciones";
 import { Chat } from "./Chat";
+import { crearPedido } from "./acciones";
 
 export const metadata = { title: "Chat" };
 
@@ -35,13 +37,17 @@ async function Contenido({ params }: { params: PageProps<"/mensajes/[id]">["para
     .maybeSingle();
   if (!c) notFound();
 
-  const { data: mensajes } = await supabase.from("mensajes").select("*").eq("conversacion_id", c.id).order("created_at").limit(500);
+  const [{ data: mensajes }, { data: pedidos }] = await Promise.all([
+    supabase.from("mensajes").select("*").eq("conversacion_id", c.id).order("created_at").limit(500),
+    supabase.from("pedidos").select("id, estado, total, created_at").eq("conversacion_id", c.id).order("created_at", { ascending: false }),
+  ]);
 
   const comprador = c.comprador as unknown as Persona;
   const vendedor = c.vendedor as unknown as Persona;
   const esComprador = usuario.id === comprador.id;
   const otro = esComprador ? vendedor : comprador;
   const publicacion = c.publicacion as { id: number; nombre: string; precio: number } | null;
+  const borradorAbierto = pedidos?.some((p) => p.estado === "borrador");
 
   return (
     <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_280px]">
@@ -84,6 +90,35 @@ async function Contenido({ params }: { params: PageProps<"/mensajes/[id]">["para
           </div>
         )}
 
+        <div className="tarjeta space-y-3 p-4">
+          <p className="text-sm font-semibold">Pedidos de esta conversación</p>
+          {pedidos?.length ? (
+            <ul className="space-y-2">
+              {pedidos.map((p) => (
+                <li key={p.id}>
+                  <Link href={`/pedidos/${p.id}`} className="flex items-center justify-between gap-2 rounded-xl border border-borde px-3 py-2 hover:border-marca">
+                    <span className="text-sm font-medium">{codigoPedido(p.id)}</span>
+                    <EstadoPedidoBadge estado={p.estado as EstadoPedido} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-texto-suave">
+              {esComprador
+                ? "Cuando acuerden los detalles, crea el pedido. El vendedor lo llenará con los artículos y el precio."
+                : "El comprador creará el pedido y tú agregarás los artículos."}
+            </p>
+          )}
+          {esComprador && !borradorAbierto && (
+            <FormAccion action={crearPedido.bind(null, c.id)}>
+              <BotonEnviar className="btn-primario w-full" textoEnviando="Creando…">
+                Crear pedido
+              </BotonEnviar>
+            </FormAccion>
+          )}
+          {esComprador && borradorAbierto && <p className="text-xs text-texto-suave">Ya tienes un pedido en preparación con este vendedor.</p>}
+        </div>
       </aside>
     </div>
   );
