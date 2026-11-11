@@ -4,10 +4,13 @@ import { Suspense } from "react";
 import { exigirUsuario } from "@/lib/auth";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { codigoPedido, dinero, fecha, fechaHora } from "@/lib/formato";
-import { ESTADOS_ANTES_DE_ENVIO } from "@/lib/pedidos";
-import type { Pedido, PedidoItem, Tienda } from "@/lib/tipos";
+import { construirRuta, ESTADOS_ANTES_DE_ENVIO, siguienteMovimiento } from "@/lib/pedidos";
+import type { EventoPedido, Pedido, PedidoItem, Tienda } from "@/lib/tipos";
 import { Cargando, EstadoPedidoBadge, Seccion } from "@/components/ui/basicos";
 import { BotonEnviar, FormAccion } from "@/components/ui/FormAccion";
+import { HistorialPedido, MapaRed, PasosPedido, RutaRed } from "@/components/pedidos/Seguimiento";
+import { AccionesLogistica } from "@/components/pedidos/AccionesLogistica";
+import { EditorRuta } from "@/components/pedidos/EditorRuta";
 import { agregarItem, cancelarPedido, confirmarPedido, eliminarItem, revisarPago } from "./acciones";
 import { SubirComprobante } from "./SubirComprobante";
 
@@ -30,15 +33,21 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
   if (!data) notFound();
   const pedido = data as Pedido;
 
-  const [{ data: items }, { data: tiendasData }] = await Promise.all([
-    supabase.from("pedido_items").select("*").eq("pedido_id", pedido.id).order("id"),
-    supabase.from("tiendas").select("*").order("nombre"),
-  ]);
+  const [{ data: items }, { data: ruta }, { data: eventos }, { data: tiendasData }, { data: codigo }] =
+    await Promise.all([
+      supabase.from("pedido_items").select("*").eq("pedido_id", pedido.id).order("id"),
+      supabase.from("pedido_ruta").select("orden, tienda_id").eq("pedido_id", pedido.id),
+      supabase.from("eventos_pedido").select("*").eq("pedido_id", pedido.id).order("created_at"),
+      supabase.from("tiendas").select("*").order("nombre"),
+      supabase.from("codigos_retiro").select("codigo").eq("pedido_id", pedido.id).maybeSingle(),
+    ]);
 
-  const idsPersonas = [pedido.comprador_id, pedido.vendedor_id];
+  const idsPersonas = [...new Set([pedido.comprador_id, pedido.vendedor_id, ...(eventos ?? []).map((e) => e.usuario_id).filter(Boolean)])];
   const { data: personas } = await supabase.from("perfiles").select("id, nombre").in("id", idsPersonas);
   const tiendas = new Map(((tiendasData as Tienda[]) ?? []).map((t) => [t.id, t]));
   const nombres = new Map((personas ?? []).map((p) => [p.id as string, p.nombre as string]));
+  const nodos = construirRuta(pedido, ruta ?? [], tiendas);
+  const siguiente = siguienteMovimiento(pedido, nodos, tiendas);
   const rol = usuario.perfil.rol;
   const esComprador = usuario.id === pedido.comprador_id;
   const esVendedor = usuario.id === pedido.vendedor_id;
@@ -47,6 +56,10 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
   const antesDeEnvio = ESTADOS_ANTES_DE_ENVIO.includes(pedido.estado);
   const puedeCancelar =
     antesDeEnvio && (esVendedor || esAdmin || (esComprador && ["borrador", "pendiente_pago"].includes(pedido.estado)));
+  const puedeEditarRuta =
+    (esAdmin || (esStaff && usuario.perfil.tienda_id === pedido.tienda_origen_id)) &&
+    [...ESTADOS_ANTES_DE_ENVIO, "en_tienda_origen"].includes(pedido.estado) &&
+    pedido.estado !== "cancelado";
 
   let urlComprobante: string | null = null;
   if (pedido.comprobante_path && (esComprador || esVendedor)) {
@@ -59,7 +72,9 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
       ? await supabase.from("publicaciones").select("id, nombre, precio").eq("vendedor_id", usuario.id).eq("estado", "activa")
       : { data: null };
 
+  const origen = tiendas.get(pedido.tienda_origen_id)!;
   const destino = tiendas.get(pedido.tienda_destino_id)!;
+  const actual = pedido.nodo_actual_id ? tiendas.get(pedido.nodo_actual_id) : null;
 
   return (
     <div className="space-y-6">
@@ -91,6 +106,45 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
           <p className="font-semibold">Este pedido fue cancelado.</p>
           {pedido.motivo_cancelacion && <p className="mt-1">Motivo: {pedido.motivo_cancelacion}</p>}
         </div>
+      )}
+
+      {/* Código de retiro: lo ve solo el comprador (RF-9) */}
+      {esComprador && pedido.estado === "listo_para_retiro" && codigo && (
+        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-600 p-6 text-white shadow-lg">
+          <p className="text-sm font-semibold uppercase tracking-wide text-white/80">Tu pedido está listo para retiro</p>
+          <p className="mt-1 text-sm">
+            Preséntalo en <strong>{destino.nombre}</strong> ({destino.direccion}
+            {destino.horario && ` · ${destino.horario}`})
+          </p>
+          <p className="mt-4 text-xs uppercase tracking-wide text-white/80">Código de confirmación</p>
+          <p className="font-mono text-5xl font-bold tracking-[0.25em]">{codigo.codigo}</p>
+        </section>
+      )}
+
+      {pedido.estado !== "cancelado" && (
+        <section className="tarjeta space-y-5 p-5">
+          <PasosPedido estado={pedido.estado} />
+          {siguiente && (
+            <div className="flex items-start gap-3 rounded-xl bg-marca-clara/60 px-4 py-3">
+              <span className="text-lg" aria-hidden>
+                ➜
+              </span>
+              <div className="text-sm">
+                <p className="font-semibold text-tinta">Siguiente movimiento esperado</p>
+                <p className="text-tinta-suave">{siguiente}</p>
+              </div>
+            </div>
+          )}
+          {(esStaff || esAdmin) && (
+            <AccionesLogistica
+              pedido={pedido}
+              tiendaId={usuario.perfil.tienda_id}
+              esAdmin={esAdmin}
+              tiendas={tiendas}
+              siguienteId={nodos[pedido.ruta_indice + 1]?.tienda.id}
+            />
+          )}
+        </section>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
@@ -236,9 +290,38 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
             </Seccion>
           )}
 
+          {/* Historial completo (RF-8, RNF-06) */}
+          <Seccion titulo="Historial del pedido">
+            <HistorialPedido eventos={(eventos as EventoPedido[]) ?? []} tiendas={tiendas} nombres={nombres} />
+          </Seccion>
         </div>
 
         <div className="space-y-6">
+          <Seccion titulo="Recorrido por la red">
+            {pedido.estado === "en_transito" ? (
+              <p className="mb-3 text-sm">
+                En camino de <strong>{actual?.nombre}</strong> a <strong>{tiendas.get(pedido.siguiente_nodo_id!)?.nombre}</strong>
+              </p>
+            ) : actual ? (
+              <p className="mb-3 text-sm">
+                Ubicación actual: <strong>{actual.nombre}</strong>
+              </p>
+            ) : null}
+            <RutaRed nodos={nodos} pedido={pedido} />
+            <div className="mt-4">
+              <MapaRed nodos={nodos} tiendas={[...tiendas.values()]} actualId={pedido.estado === "en_transito" ? null : pedido.nodo_actual_id} />
+            </div>
+            {puedeEditarRuta && (
+              <div className="mt-4 border-t border-borde pt-4">
+                <EditorRuta
+                  pedidoId={pedido.id}
+                  tiendas={[...tiendas.values()].filter((t) => t.activa && t.id !== origen.id && t.id !== destino.id)}
+                  seleccionadas={nodos.filter((n) => n.tipo === "intermedio").map((n) => n.tienda.id)}
+                />
+              </div>
+            )}
+          </Seccion>
+
           <Seccion titulo="Punto de retiro">
             <p className="text-sm font-semibold">{destino.nombre}</p>
             <p className="text-sm text-texto-suave">
