@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { obtenerUsuario } from "@/lib/auth";
+import { crearClienteServidor } from "@/lib/supabase/server";
 import { ROLES } from "@/lib/formato";
 import type { Rol } from "@/lib/tipos";
 import { cerrarSesion } from "@/app/(auth)/acciones";
+import { Campana } from "./Campana";
 import { Avatar } from "./ui/basicos";
 
 const ENLACES: Record<Rol, { href: string; texto: string }[]> = {
@@ -69,6 +71,8 @@ export async function Encabezado() {
     );
   }
 
+  const supabase = await crearClienteServidor();
+  const { count } = await supabase.from("notificaciones").select("id", { count: "exact", head: true }).eq("leida", false);
   const enlaces = ENLACES[usuario.perfil.rol];
 
   return (
@@ -82,6 +86,8 @@ export async function Encabezado() {
       </nav>
 
       <div className="ml-auto flex items-center gap-1">
+        <Campana usuarioId={usuario.id} inicial={count ?? 0} />
+
         <details className="group relative">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-white/10 [&::-webkit-details-marker]:hidden">
             <Avatar nombre={usuario.perfil.nombre} path={usuario.perfil.foto_path} tamano={32} />
@@ -113,6 +119,9 @@ export async function Encabezado() {
                 Ver mi perfil público
               </Link>
             )}
+            <Link href="/notificaciones" className="block px-4 py-2 hover:bg-fondo">
+              Notificaciones
+            </Link>
             <form action={cerrarSesion}>
               <button type="submit" className="block w-full px-4 py-2 text-left text-red-700 hover:bg-red-50">
                 Cerrar sesión
