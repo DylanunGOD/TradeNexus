@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { Fragment, Suspense } from "react";
 import { exigirUsuario } from "@/lib/auth";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { codigoPedido, dinero, fecha, fechaHora } from "@/lib/formato";
 import { construirRuta, ESTADOS_ANTES_DE_ENVIO, siguienteMovimiento } from "@/lib/pedidos";
 import type { EventoPedido, Pedido, PedidoItem, Tienda } from "@/lib/tipos";
-import { Cargando, EstadoPedidoBadge, Seccion } from "@/components/ui/basicos";
+import { Cargando, EstadoPedidoBadge, Estrellas, Seccion } from "@/components/ui/basicos";
 import { BotonEnviar, FormAccion } from "@/components/ui/FormAccion";
 import { HistorialPedido, MapaRed, PasosPedido, RutaRed } from "@/components/pedidos/Seguimiento";
 import { AccionesLogistica } from "@/components/pedidos/AccionesLogistica";
 import { EditorRuta } from "@/components/pedidos/EditorRuta";
-import { agregarItem, cancelarPedido, confirmarPedido, eliminarItem, revisarPago } from "./acciones";
+import { agregarItem, calificarVendedor, cancelarPedido, confirmarPedido, eliminarItem, revisarPago } from "./acciones";
 import { SubirComprobante } from "./SubirComprobante";
 
 export const metadata = { title: "Pedido" };
@@ -33,13 +33,14 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
   if (!data) notFound();
   const pedido = data as Pedido;
 
-  const [{ data: items }, { data: ruta }, { data: eventos }, { data: tiendasData }, { data: codigo }] =
+  const [{ data: items }, { data: ruta }, { data: eventos }, { data: tiendasData }, { data: codigo }, { data: calificacion }] =
     await Promise.all([
       supabase.from("pedido_items").select("*").eq("pedido_id", pedido.id).order("id"),
       supabase.from("pedido_ruta").select("orden, tienda_id").eq("pedido_id", pedido.id),
       supabase.from("eventos_pedido").select("*").eq("pedido_id", pedido.id).order("created_at"),
       supabase.from("tiendas").select("*").order("nombre"),
       supabase.from("codigos_retiro").select("codigo").eq("pedido_id", pedido.id).maybeSingle(),
+      supabase.from("calificaciones").select("*").eq("pedido_id", pedido.id).maybeSingle(),
     ]);
 
   const idsPersonas = [...new Set([pedido.comprador_id, pedido.vendedor_id, ...(eventos ?? []).map((e) => e.usuario_id).filter(Boolean)])];
@@ -329,6 +330,36 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
             </p>
             {destino.horario && <p className="text-sm text-texto-suave">Horario: {destino.horario}</p>}
           </Seccion>
+
+          {/* Calificación (RF-11) */}
+          {pedido.estado === "entregado" && (esComprador || calificacion) && (
+            <Seccion titulo="Calificación del vendedor">
+              {calificacion ? (
+                <div>
+                  <Estrellas valor={calificacion.estrellas} tamano="text-lg" />
+                  {calificacion.comentario && <p className="mt-2 text-sm text-tinta-suave">“{calificacion.comentario}”</p>}
+                </div>
+              ) : (
+                <FormAccion action={calificarVendedor.bind(null, pedido.id)} className="space-y-3">
+                  <fieldset>
+                    <legend className="etiqueta">¿Cómo fue tu experiencia?</legend>
+                    <div className="flex flex-row-reverse justify-end gap-1 text-3xl [&>input:checked~label]:text-acento [&>label:hover]:text-acento [&>label:hover~label]:text-acento">
+                      {[5, 4, 3, 2, 1].map((n) => (
+                        <Fragment key={n}>
+                          <input type="radio" id={`estrella-${n}`} name="estrellas" value={n} className="peer sr-only" required />
+                          <label htmlFor={`estrella-${n}`} className="cursor-pointer text-borde" title={`${n} estrellas`}>
+                            ★
+                          </label>
+                        </Fragment>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <textarea name="comentario" rows={2} maxLength={500} className="campo" placeholder="Comentario (opcional)" />
+                  <BotonEnviar>Enviar calificación</BotonEnviar>
+                </FormAccion>
+              )}
+            </Seccion>
+          )}
 
           {puedeCancelar && (
             <Seccion titulo="Cancelar pedido">

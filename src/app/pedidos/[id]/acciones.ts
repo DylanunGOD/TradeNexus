@@ -64,3 +64,15 @@ export async function revisarPago(pedidoId: number, _: EstadoAccion, fd: FormDat
 export async function cancelarPedido(pedidoId: number, _: EstadoAccion, fd: FormData): Promise<EstadoAccion> {
   return rpc("cancelar_pedido", { p_pedido: pedidoId, p_motivo: texto(fd, "motivo") });
 }
+
+// --- Calificación (RF-11) ---------------------------------------------------
+export async function calificarVendedor(pedidoId: number, _: EstadoAccion, fd: FormData): Promise<EstadoAccion> {
+  const estrellas = Number(fd.get("estrellas"));
+  if (!(estrellas >= 1 && estrellas <= 5)) return { error: "Elige de 1 a 5 estrellas." };
+  const supabase = await crearClienteServidor();
+  const { error } = await supabase
+    .from("calificaciones")
+    .insert({ pedido_id: pedidoId, estrellas, comentario: texto(fd, "comentario") || null });
+  if (!error) refresh();
+  return resultado(error, "¡Gracias por calificar!");
+}
