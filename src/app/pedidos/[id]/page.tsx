@@ -33,7 +33,7 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
   if (!data) notFound();
   const pedido = data as Pedido;
 
-  const [{ data: items }, { data: ruta }, { data: eventos }, { data: tiendasData }, { data: codigo }, { data: calificacion }] =
+  const [{ data: items }, { data: ruta }, { data: eventos }, { data: tiendasData }, { data: codigo }, { data: calificacion }, { data: denuncias }] =
     await Promise.all([
       supabase.from("pedido_items").select("*").eq("pedido_id", pedido.id).order("id"),
       supabase.from("pedido_ruta").select("orden, tienda_id").eq("pedido_id", pedido.id),
@@ -41,6 +41,7 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
       supabase.from("tiendas").select("*").order("nombre"),
       supabase.from("codigos_retiro").select("codigo").eq("pedido_id", pedido.id).maybeSingle(),
       supabase.from("calificaciones").select("*").eq("pedido_id", pedido.id).maybeSingle(),
+      supabase.from("denuncias").select("id, estado").eq("pedido_id", pedido.id),
     ]);
 
   const idsPersonas = [...new Set([pedido.comprador_id, pedido.vendedor_id, ...(eventos ?? []).map((e) => e.usuario_id).filter(Boolean)])];
@@ -358,6 +359,27 @@ async function Contenido({ params }: { params: PageProps<"/pedidos/[id]">["param
                   <BotonEnviar>Enviar calificación</BotonEnviar>
                 </FormAccion>
               )}
+            </Seccion>
+          )}
+
+          {/* Denuncias (RF-12) */}
+          {esComprador && pedido.estado !== "borrador" && (
+            <Seccion titulo="¿Tuviste un problema?">
+              {denuncias?.length ? (
+                <ul className="mb-3 space-y-1 text-sm">
+                  {denuncias.map((d) => (
+                    <li key={d.id}>
+                      <Link href={`/denuncias/${d.id}`} className="enlace">
+                        Denuncia #{d.id}
+                      </Link>{" "}
+                      <span className="text-texto-suave">({d.estado.replace("_", " ")})</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <Link href={`/denuncias/nueva?pedido=${pedido.id}`} className="btn-secundario w-full">
+                Reportar un problema
+              </Link>
             </Seccion>
           )}
 
