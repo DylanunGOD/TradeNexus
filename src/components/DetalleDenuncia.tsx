@@ -7,6 +7,7 @@ import type { Denuncia, EstadoDenuncia } from "@/lib/tipos";
 import { EstadoDenunciaBadge, Seccion } from "@/components/ui/basicos";
 import { BotonEnviar, FormAccion } from "@/components/ui/FormAccion";
 import { comentarDenuncia, gestionarDenuncia } from "@/app/denuncias/acciones";
+import { registrarStrike } from "@/app/admin/acciones";
 
 /** Detalle de una denuncia. El comprador conversa con soporte; soporte la gestiona hasta su cierre. */
 export async function DetalleDenuncia({ id, usuario }: { id: number; usuario: Usuario }) {
@@ -15,6 +16,7 @@ export async function DetalleDenuncia({ id, usuario }: { id: number; usuario: Us
   if (!data) notFound();
   const d = data as Denuncia;
   const esSoporte = ["soporte", "admin"].includes(usuario.perfil.rol);
+  const esAdmin = usuario.perfil.rol === "admin";
 
   const [{ data: evidencias }, { data: comentarios }, { data: personas }, { data: strikes }] = await Promise.all([
     supabase.from("denuncia_evidencias").select("*").eq("denuncia_id", d.id),
@@ -176,6 +178,14 @@ export async function DetalleDenuncia({ id, usuario }: { id: number; usuario: Us
                 </ul>
               ) : (
                 <p className="mb-3 text-sm text-texto-suave">Sin strikes registrados.</p>
+              )}
+              {esAdmin && (
+                <FormAccion action={registrarStrike} limpiarAlTerminar className="space-y-2 border-t border-borde pt-3">
+                  <input type="hidden" name="vendedor_id" value={d.vendedor_id} />
+                  <input type="hidden" name="denuncia_id" value={d.id} />
+                  <textarea name="motivo" rows={2} required minLength={5} className="campo" placeholder="Motivo del strike" />
+                  <BotonEnviar className="btn-peligro w-full">Registrar strike</BotonEnviar>
+                </FormAccion>
               )}
             </Seccion>
           )}
